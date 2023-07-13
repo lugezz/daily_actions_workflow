@@ -1,0 +1,62 @@
+
+
+name: Daily Run
+
+on:
+  push:
+    branches: [ master ]
+
+  schedule:
+    # Scheduled to run each 30 minutes
+    - cron:  '*/30 * * * *'
+
+
+jobs:
+  check_date:
+    runs-on: ubuntu-latest
+    name: Check latest commit
+    steps:
+      - uses: actions/checkout@v3
+      - name: Print latest_commit and info
+        run: |
+          echo ${{ github.sha }}
+          echo ${{ github.event_name }}
+
+      - name: Check if latest commit is less than 30 minutes old
+        id: latest_commit
+        # continue-on-error: true
+        run: |
+          if [ "${{ github.event_name }}" != "schedule" ]; then
+            echo "Setting should_run to true because it is not a scheduled run"
+            echo "should_run=true" >> $GITHUB_OUTPUT
+          else
+            if [ -z "$(git rev-list  --after="30 minutes"  ${{ github.sha }})" ]; then
+              echo "Setting should_run to true because it is a scheduled run and the latest commit is older than 30 minutes"
+              echo "should_run=true" >> $GITHUB_OUTPUT
+            else
+              echo "Setting should_run to false because it is a scheduled run and the latest commit is younger than 30 minutes"
+              echo "should_run=false" >> $GITHUB_OUTPUT
+            fi
+          fi
+          echo $GITHUB_OUTPUT
+
+    outputs:
+      should_run: ${{ steps.latest_commit.outputs.should_run }}
+
+  run_tests:
+    runs-on: ubuntu-latest
+    name: Run Tests
+    needs: check_date
+    steps:
+      - uses: actions/checkout@v3
+  
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v3
+        with:
+          python-version: '3.10'
+
+      - name: Run tests
+        if: needs.check_date.outputs.should_run == 'true'
+        run: |
+          python dummy_test.py
+        
